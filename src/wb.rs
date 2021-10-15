@@ -495,7 +495,7 @@ fn standard_styles() -> HashMap<String, String> {
         ["48", "##0.0E+0",],
         ["49", "@",],
     ];
-    for style in standard_styles {
+    for style in &standard_styles {
         let [id, code] = style;
         styles.insert(id.to_string(), code.to_string());
     }
