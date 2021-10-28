@@ -1,14 +1,16 @@
-use std::convert::TryInto;
+use crate::wb::DateSystem;
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use quick_xml::events::attributes::{Attribute, Attributes};
-use crate::wb::DateSystem;
+use std::convert::TryInto;
 
 const XL_MAX_COL: u16 = 16384;
 const XL_MIN_COL: u16 = 1;
 
 /// Return column letter for column number `n`
 pub fn num2col(n: u16) -> Option<String> {
-    if !(XL_MIN_COL..=XL_MAX_COL).contains(&n) { return None }
+    if !(XL_MIN_COL..=XL_MAX_COL).contains(&n) {
+        return None;
+    }
     let mut s = String::new();
     let mut n = n;
     while n > 0 {
@@ -24,10 +26,14 @@ pub fn col2num(letter: &str) -> Option<u16> {
     let letter = letter.to_uppercase();
     let mut num: u16 = 0;
     for c in letter.chars() {
-        if !('A'..='Z').contains(&c) { return None }
+        if !('A'..='Z').contains(&c) {
+            return None;
+        }
         num = num * 26 + ((c as u16) - ('A' as u16)) + 1;
     }
-    if !(XL_MIN_COL..=XL_MAX_COL).contains(&num) { return None }
+    if !(XL_MIN_COL..=XL_MAX_COL).contains(&num) {
+        return None;
+    }
     Some(num)
 }
 
@@ -39,7 +45,7 @@ pub fn get(attrs: Attributes, which: &[u8]) -> Option<String> {
     for attr in attrs {
         let a = attr.unwrap();
         if a.key == which {
-            return Some(attr_value(&a))
+            return Some(attr_value(&a));
         }
     }
     None
@@ -74,7 +80,7 @@ pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConver
                 base -= Duration::days(1)
             }
             base
-        },
+        }
         DateSystem::V1904 => {
             // Under the 1904 system, 1 represent 1/2/1904 so we start with a base date of
             // 1/1/1904.
@@ -83,7 +89,7 @@ pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConver
     };
     let days = number.trunc() as i64;
     if days < -693594 {
-        return DateConversion::Number(days)
+        return DateConversion::Number(days);
     }
     let partial_days = number - (days as f64);
     let seconds = (partial_days * 86400000.0).round() as i64;

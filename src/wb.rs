@@ -1,15 +1,15 @@
 //! This module provides the functionality necessary to interact with an Excel workbook (i.e., the
 //! entire file).
 
+use crate::utils;
+use crate::ws::{SheetReader, Worksheet};
+use quick_xml::events::Event;
+use quick_xml::Reader;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use zip::ZipArchive;
-use crate::ws::{SheetReader, Worksheet};
-use crate::utils;
 
 /// Excel spreadsheets support two different date systems:
 ///
@@ -57,7 +57,7 @@ pub struct Workbook {
 ///     let sheets = wb.sheets();
 #[derive(Debug)]
 pub struct SheetMap {
-    sheets_by_name: HashMap::<String, u8>,
+    sheets_by_name: HashMap<String, u8>,
     sheets_by_num: Vec<Option<Worksheet>>,
 }
 
@@ -96,14 +96,20 @@ pub enum SheetNameOrNum<'a> {
 
 /// Trait to make it easy to use `get` when trying to get a sheet. You will probably not use this
 /// struct directly.
-pub trait SheetAccessTrait { fn go(&self) -> SheetNameOrNum; }
+pub trait SheetAccessTrait {
+    fn go(&self) -> SheetNameOrNum;
+}
 
 impl SheetAccessTrait for &str {
-    fn go(&self) -> SheetNameOrNum { SheetNameOrNum::Name(*self) }
+    fn go(&self) -> SheetNameOrNum {
+        SheetNameOrNum::Name(*self)
+    }
 }
 
 impl SheetAccessTrait for usize {
-    fn go(&self) -> SheetNameOrNum { SheetNameOrNum::Pos(*self) }
+    fn go(&self) -> SheetNameOrNum {
+        SheetNameOrNum::Pos(*self)
+    }
 }
 
 impl SheetMap {
@@ -136,11 +142,9 @@ impl SheetMap {
     pub fn get<T: SheetAccessTrait>(&self, sheet: T) -> Option<&Worksheet> {
         let sheet = sheet.go();
         match sheet {
-            SheetNameOrNum::Name(n) => {
-                match self.sheets_by_name.get(n) {
-                    Some(p) => self.sheets_by_num.get(*p as usize)?.as_ref(),
-                    None => None
-                }
+            SheetNameOrNum::Name(n) => match self.sheets_by_name.get(n) {
+                Some(p) => self.sheets_by_num.get(*p as usize)?.as_ref(),
+                None => None,
             },
             SheetNameOrNum::Pos(n) => self.sheets_by_num.get(n)?.as_ref(),
         }
@@ -192,18 +196,17 @@ impl Workbook {
                         Ok(Event::Empty(ref e)) if e.name() == b"Relationship" => {
                             let mut id = String::new();
                             let mut target = String::new();
-                            e.attributes()
-                                .for_each(|a| {
-                                    let a = a.unwrap();
-                                    if a.key == b"Id" {
-                                        id = utils::attr_value(&a);
-                                    }
-                                    if a.key == b"Target" {
-                                        target = utils::attr_value(&a);
-                                    }
-                                });
+                            e.attributes().for_each(|a| {
+                                let a = a.unwrap();
+                                if a.key == b"Id" {
+                                    id = utils::attr_value(&a);
+                                }
+                                if a.key == b"Target" {
+                                    target = utils::attr_value(&a);
+                                }
+                            });
                             map.insert(id, target);
-                        },
+                        }
                         Ok(Event::Eof) => break, // exits the loop when reaching end of file
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                         _ => (), // There are several other `Event`s we do not consider here
@@ -212,8 +215,8 @@ impl Workbook {
                 }
 
                 map
-            },
-            Err(_) => map
+            }
+            Err(_) => map,
         }
     }
 
@@ -221,7 +224,10 @@ impl Workbook {
     /// methods for more detailed documentation.
     pub fn sheets(&mut self) -> SheetMap {
         let rels = self.rels();
-        let num_sheets = rels.iter().filter(|(_, v)| v.starts_with("worksheet")).count();
+        let num_sheets = rels
+            .iter()
+            .filter(|(_, v)| v.starts_with("worksheet"))
+            .count();
         let mut sheets = SheetMap {
             sheets_by_name: HashMap::new(),
             sheets_by_num: Vec::with_capacity(num_sheets + 1),
@@ -244,22 +250,23 @@ impl Workbook {
                             let mut name = String::new();
                             let mut id = String::new();
                             let mut num = 0;
-                            e.attributes()
-                                .for_each(|a| {
-                                    let a = a.unwrap();
-                                    if a.key == b"r:id" {
-                                        id = utils::attr_value(&a);
+                            e.attributes().for_each(|a| {
+                                let a = a.unwrap();
+                                if a.key == b"r:id" {
+                                    id = utils::attr_value(&a);
+                                }
+                                if a.key == b"name" {
+                                    name = utils::attr_value(&a);
+                                }
+                                if a.key == b"sheetId" {
+                                    if let Ok(r) = utils::attr_value(&a).parse() {
+                                        num = r;
                                     }
-                                    if a.key == b"name" {
-                                        name = utils::attr_value(&a);
-                                    }
-                                    if a.key == b"sheetId" {
-                                        if let Ok(r) = utils::attr_value(&a).parse() {
-                                            num = r;
-                                        }
-                                    }
-                                });
-                            sheets.sheets_by_name.insert(name.clone(), current_sheet_num);
+                                }
+                            });
+                            sheets
+                                .sheets_by_name
+                                .insert(name.clone(), current_sheet_num);
                             let target = {
                                 let s = rels.get(&id).unwrap();
                                 if let Some(stripped) = s.strip_prefix('/') {
@@ -270,18 +277,16 @@ impl Workbook {
                             };
                             let ws = Worksheet::new(id, name, current_sheet_num, target, num);
                             sheets.sheets_by_num.push(Some(ws));
-                        },
-                        Ok(Event::Eof) => {
-                            break
-                        },
+                        }
+                        Ok(Event::Eof) => break,
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                         _ => (),
                     }
                     buf.clear();
                 }
                 sheets
-            },
-            Err(_) => sheets
+            }
+            Err(_) => sheets,
         }
     }
 
@@ -324,17 +329,19 @@ impl Workbook {
                     strings,
                     styles,
                 })
-            },
-            Err(e) => Err(e.to_string())
+            }
+            Err(e) => Err(e.to_string()),
         }
     }
 
     /// Alternative name for `Workbook::new`.
-    pub fn open(path: &str) -> Result<Self, String> { Workbook::new(path) }
+    pub fn open(path: &str) -> Result<Self, String> {
+        Workbook::new(path)
+    }
 
     /// Simple method to print out all the inner files of the xlsx zip.
     pub fn contents(&mut self) {
-        for i in 0 .. self.xls.len() {
+        for i in 0..self.xls.len() {
             let file = self.xls.by_index(i).unwrap();
             let outpath = match file.enclosed_name() {
                 Some(path) => path.to_owned(),
@@ -360,7 +367,7 @@ impl Workbook {
     pub fn sheet_reader<'a>(&'a mut self, zip_target: &str) -> SheetReader<'a> {
         let target = match self.xls.by_name(zip_target) {
             Ok(ws) => ws,
-            Err(_) => panic!("Could not find worksheet: {}", zip_target)
+            Err(_) => panic!("Could not find worksheet: {}", zip_target),
         };
         // let _ = std::io::copy(&mut target, &mut std::io::stdout());
         let reader = BufReader::new(target);
@@ -368,9 +375,7 @@ impl Workbook {
         reader.trim_text(true);
         SheetReader::new(reader, &self.strings, &self.styles, &self.date_system)
     }
-
 }
-
 
 fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
     let mut strings = Vec::new();
@@ -394,8 +399,10 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
                         } else {
                             preserve_space = false;
                         }
-                    },
-                    Ok(Event::Text(ref e)) => this_string.push_str(&e.unescape_and_decode(&reader).unwrap()[..]),
+                    }
+                    Ok(Event::Text(ref e)) => {
+                        this_string.push_str(&e.unescape_and_decode(&reader).unwrap()[..])
+                    }
                     Ok(Event::Empty(ref e)) if e.name() == b"t" => strings.push("".to_owned()),
                     Ok(Event::End(ref e)) if e.name() == b"t" => {
                         if preserve_space {
@@ -404,7 +411,7 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
                             strings.push(this_string.trim().to_owned());
                         }
                         this_string = String::new();
-                    },
+                    }
                     Ok(Event::Eof) => break,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                     _ => (),
@@ -412,8 +419,8 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
                 buf.clear();
             }
             strings
-        },
-        Err(_) => strings
+        }
+        Err(_) => strings,
     }
 }
 
@@ -425,7 +432,7 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
     let mut number_formats = standard_styles();
     let styles_xml = match xlsx.by_name("xl/styles.xml") {
         Ok(s) => s,
-        Err(_) => return styles
+        Err(_) => return styles,
     };
     // let _ = std::io::copy(&mut styles_xml, &mut std::io::stdout());
     let reader = BufReader::new(styles_xml);
@@ -439,20 +446,22 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
                 let id = utils::get(e.attributes(), b"numFmtId").unwrap();
                 let code = utils::get(e.attributes(), b"formatCode").unwrap();
                 number_formats.insert(id, code);
-            },
+            }
             Ok(Event::Start(ref e)) if e.name() == b"cellXfs" => {
                 // Section 2.1.589 Part 1 Section 18.3.1.4, c (Cell)
                 // Item g. states that Office specifies that @s indexes into the cellXfs collection
                 // in the style part. See https://tinyurl.com/yju9a6ox for more information.
                 record_styles = true;
-            },
+            }
             Ok(Event::End(ref e)) if e.name() == b"cellXfs" => record_styles = false,
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) if record_styles && e.name() == b"xf" => {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e))
+                if record_styles && e.name() == b"xf" =>
+            {
                 let id = utils::get(e.attributes(), b"numFmtId").unwrap();
                 if number_formats.contains_key(&id) {
                     styles.push(number_formats.get(&id).unwrap().to_string());
                 }
-            },
+            }
             Ok(Event::Eof) => break,
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
@@ -466,34 +475,34 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
 fn standard_styles() -> HashMap<String, String> {
     let mut styles = HashMap::new();
     let standard_styles = [
-        ["0", "General",],
-        ["1", "0",],
-        ["2", "0.00",],
-        ["3", "#,##0",],
-        ["4", "#,##0.00",],
-        ["9", "0%",],
-        ["10", "0.00%",],
-        ["11", "0.00E+00",],
-        ["12", "# ?/?",],
-        ["13", "# ??/??",],
-        ["14", "mm-dd-yy",],
-        ["15", "d-mmm-yy",],
-        ["16", "d-mmm",],
-        ["17", "mmm-yy",],
-        ["18", "h:mm AM/PM",],
-        ["19", "h:mm:ss AM/PM",],
-        ["20", "h:mm",],
-        ["21", "h:mm:ss",],
-        ["22", "m/d/yy h:mm",],
-        ["37", "#,##0 ;(#,##0)",],
-        ["38", "#,##0 ;[Red](#,##0)",],
-        ["39", "#,##0.00;(#,##0.00)",],
-        ["40", "#,##0.00;[Red](#,##0.00)",],
-        ["45", "mm:ss",],
-        ["46", "[h]:mm:ss",],
-        ["47", "mmss.0",],
-        ["48", "##0.0E+0",],
-        ["49", "@",],
+        ["0", "General"],
+        ["1", "0"],
+        ["2", "0.00"],
+        ["3", "#,##0"],
+        ["4", "#,##0.00"],
+        ["9", "0%"],
+        ["10", "0.00%"],
+        ["11", "0.00E+00"],
+        ["12", "# ?/?"],
+        ["13", "# ??/??"],
+        ["14", "mm-dd-yy"],
+        ["15", "d-mmm-yy"],
+        ["16", "d-mmm"],
+        ["17", "mmm-yy"],
+        ["18", "h:mm AM/PM"],
+        ["19", "h:mm:ss AM/PM"],
+        ["20", "h:mm"],
+        ["21", "h:mm:ss"],
+        ["22", "m/d/yy h:mm"],
+        ["37", "#,##0 ;(#,##0)"],
+        ["38", "#,##0 ;[Red](#,##0)"],
+        ["39", "#,##0.00;(#,##0.00)"],
+        ["40", "#,##0.00;[Red](#,##0.00)"],
+        ["45", "mm:ss"],
+        ["46", "[h]:mm:ss"],
+        ["47", "mmss.0"],
+        ["48", "##0.0E+0"],
+        ["49", "@"],
     ];
     for style in &standard_styles {
         let [id, code] = style;
@@ -514,19 +523,19 @@ fn get_date_system(xlsx: &mut ZipArchive<fs::File>) -> DateSystem {
                     Ok(Event::Empty(ref e)) if e.name() == b"workbookPr" => {
                         if let Some(system) = utils::get(e.attributes(), b"date1904") {
                             if system == "1" {
-                                break DateSystem::V1904
+                                break DateSystem::V1904;
                             }
                         }
-                        break DateSystem::V1900
-                    },
+                        break DateSystem::V1900;
+                    }
                     Ok(Event::Eof) => break DateSystem::V1900,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                     _ => (),
                 }
                 buf.clear();
             }
-        },
-        Err(_) => panic!("Could not find xl/workbook.xml")
+        }
+        Err(_) => panic!("Could not find xl/workbook.xml"),
     }
 }
 
