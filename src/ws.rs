@@ -8,7 +8,7 @@ use quick_xml::Reader;
 use std::borrow::Cow;
 use std::cmp;
 use std::fmt;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Seek};
 use std::mem;
 use std::ops::Index;
 use zip::read::ZipFile;
@@ -142,7 +142,10 @@ impl Worksheet {
     ///     let row1 = rows.next().unwrap();
     ///     assert_eq!(row1[0].raw_value, "1");
     ///     assert_eq!(row1[1].value, ExcelValue::Number(2f64));
-    pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {
+    pub fn rows<'a, R>(&self, workbook: &'a mut Workbook<R>) -> RowIter<'a>
+    where
+        R: Read + Seek,
+    {
         let reader = workbook.sheet_reader(&self.target);
         RowIter {
             worksheet_reader: reader,

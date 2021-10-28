@@ -133,7 +133,7 @@ pub fn run(config: Config) -> Result<(), String> {
         usage();
         std::process::exit(0);
     }
-    match crate::Workbook::new(&config.workbook_path) {
+    match crate::Workbook::open(&config.workbook_path) {
         Ok(mut wb) => {
             let sheets = wb.sheets();
             let sheet = match config.tab {
